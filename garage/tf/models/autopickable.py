@@ -6,33 +6,41 @@ import tensorflow as tf
 # flake8: noqa
 
 
+class PickleCall:
+    def __new__(cls, to_call, args=(), kwargs=None, __pickle_target=None):
+        # construct this class
+        if __pickle_target is None:
+            result = super(cls, PickleCall).__new__(cls)
+            result.to_call = to_call
+            result.args = args
+            result.kwargs = kwargs or {}
+            return result
+        else:
+            # when unpickling
+            return __pickle_target(*args, **kwargs)
+
+    def __getnewargs__(self):
+        return (None, self.args, self.kwargs, self.to_call)
+
+
+def build_layers(config, weights, **kwargs):
+    model = tf.keras.models.model_from_json(config, custom_objects=kwargs)
+    model.set_weights(weights)
+    return model
+
+
 class AutoPickable:
     def __getstate__(self):
-        _args = []
-        # if it is a model
+        print("Calling __getstate__")
         state = self.__dict__.copy()
-
         for k, v in self.__dict__.items():
-            if isinstance(v, tf.Tensor):
-                _args.append(k)
-                del state[k]
-        del state['model']
-        state['model'] = self.model.get_config()
-        # pdb.set_trace()
-
-        # state['weights'] = self.model.get_weights()
-        # pdb.set_trace()
-
-        # state['model_field'] = _args
-        # pdb.set_trace()
-        del state['_dist']
+            if isinstance(v, tf.keras.models.Model):
+                custom_objects = {}
+                for c in state[k].layers:
+                    if "garage" in str(type(c)):  # detect subclassed layer
+                        name = type(c).__name__
+                        custom_objects[name] = type(c)
+                state[k] = PickleCall(build_layers,
+                                      (v.to_json(), v.get_weights()),
+                                      custom_objects)
         return state
-
-    def __setstate__(self, d):
-        # if it is a model
-        model = tf.keras.models.model_from_json(d['model'])
-        model.set_weights(d['weights'])
-        self.model = model
-        for i, k in enumerate(d['args']):
-            if k != '_input':
-                setattr(self, k, model.outputs[i])

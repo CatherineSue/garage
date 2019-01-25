@@ -8,6 +8,7 @@ from tensorflow.keras.layers import Add
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.models import Model
 from tests.fixtures import TfGraphTestCase
+import unittest
 
 # flake8: noqa
 # pylint: noqa
@@ -109,8 +110,9 @@ class TestKerasModel(TfGraphTestCase):
         modelC = GaussianMLPModelC(
             input_var=input_var, output_dim=2, hidden_sizes=(4, 4))
 
-        pickle.dumps(model)
+        model_pickled = pickle.loads(pickle.dumps(GaussianMLPModelC))
 
+    @unittest.skip
     def test_mlp(self):
         input_var = Input(shape=(5, ))
         model = mlp(input_var, 2, (4))

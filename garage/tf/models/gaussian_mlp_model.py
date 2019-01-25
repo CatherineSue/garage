@@ -3,17 +3,15 @@ import tensorflow as tf
 
 from garage.tf.core.mlp2 import mlp2
 from garage.tf.core.parameterLayer import ParameterLayer
-from garage.tf.core.distributionLayer import DistributionLayer
-from garage.tf.models import Model as GarageModel
+from garage.tf.models import PickableModel
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import Lambda
 
 # flake8: noqa
 # pylint: noqa
 
 
-class GaussianMLPModel2(GarageModel):
+class GaussianMLPModel2(PickableModel):
     def __init__(self,
                  input_dim,
                  output_dim,
@@ -27,8 +25,8 @@ class GaussianMLPModel2(GarageModel):
                  std_hidden_sizes=(32, 32),
                  min_std=1e-6,
                  max_std=None,
-                 std_hidden_nonlinearity=tf.nn.tanh,
-                 hidden_nonlinearity=tf.nn.tanh,
+                 std_hidden_nonlinearity='relu',
+                 hidden_nonlinearity='relu',
                  output_nonlinearity=None,
                  std_parameterization='exp',
                  *args,
@@ -79,7 +77,7 @@ class GaussianMLPModel2(GarageModel):
         self._hidden_nonlinearity = hidden_nonlinearity
         self._output_nonlinearity = output_nonlinearity
         self._std_parameterization = std_parameterization
-        self._dist = tf.contrib.distributions.MultivariateNormalDiag
+        self._dist = dist
         # Tranform std arguments to parameterized space
         self._init_std_param = None
         self._min_std_param = None
@@ -100,30 +98,31 @@ class GaussianMLPModel2(GarageModel):
             raise NotImplementedError
 
         self.model = self.build_model()
-        self._mean = self.model.outputs[0]
-        self._std = self.model.outputs[1]
-        self._std_param = self.model.outputs[2]
-        self._sample_var = self.model.outputs[3]
 
-    @property
-    def mean(self):
-        return self._mean
+    #     self._mean = self.model.outputs[0]
+    #     self._std = self.model.outputs[1]
+    #     self._std_param = self.model.outputs[2]
+    #     # self._sample_var = self.model.outputs[3]
 
-    @property
-    def std(self):
-        return self._std
+    # @property
+    # def mean(self):
+    #     return self._mean
 
-    @property
-    def std_param(self):
-        return self._std_param
+    # @property
+    # def std(self):
+    #     return self._std
 
-    @property
-    def dist(self):
-        return self._dist
+    # @property
+    # def std_param(self):
+    #     return self._std_param
 
-    @property
-    def sample(self):
-        return self._sample_var
+    # @property
+    # def dist(self):
+    #     return self._dist
+
+    # @property
+    # def sample(self):
+    #     return self._sample_var
 
     def build_model(self):
         input_var = Input(shape=(self._input_dim, ))
@@ -157,44 +156,51 @@ class GaussianMLPModel2(GarageModel):
             mean_var = mean_model.output
 
             if self._adaptive_std:
-                b = tf.constant_initializer(self._init_std_param)
+                # b = tf.constant_initializer(self._init_std_param)
                 std_model = mlp2(
                     input_var=input_var,
                     output_dim=self._output_dim,
                     hidden_sizes=self._std_hidden_sizes,
                     hidden_nonlinearity=self._std_hidden_nonlinearity,
                     output_nonlinearity=self._output_nonlinearity,
-                    output_b_init=b,
+                    output_b_init='ones',
                     name="std_network")
 
                 std_param_var = std_model.output
             else:
-                p = tf.constant_initializer(self._init_std_param)
+                # p = tf.keras.initializers.Constant(self._init_std_param)
                 std_param_var = ParameterLayer(
                     length=self._output_dim,
-                    initializer=p,
+                    initializer='ones',
                     trainable=self._learn_std,
                     name="std_network")(input_var)
 
-        with tf.variable_scope("std_limits"):
-            if self._min_std_param:
-                std_param_var = Lambda(lambda x: tf.maximum(
-                    x, self._min_std_param))(std_param_var)
-            if self._max_std_param:
-                std_param_var = Lambda(lambda x: tf.minimum(
-                    x, self._max_std_param))(std_param_var)
+        # with tf.variable_scope("std_limits"):
+        #     if self._min_std_param:
+        #         std_param_var = Lambda(self.get_max)(std_param_var)
+        #         print("min std")
+        #     if self._max_std_param:
+        #         std_param_var = Lambda(self.get_min)(std_param_var)
+        #         print("max std")
 
-        with tf.variable_scope("std_parameterization"):
-            if self._std_parameterization == "exp":
-                std_var = Lambda(lambda x: tf.exp(x))(std_param_var)
-            elif self._std_parameterization == "softplus":
-                std_var = Lambda(lambda x: tf.log(1. + tf.exp(x)))(
-                    std_param_var)
-            else:
-                raise NotImplementedError
+        # with tf.variable_scope("std_parameterization"):
+        #     if self._std_parameterization == "exp":
+        #         std_var = Lambda(lambda x: tf.exp(x))(std_param_var)
+        #         print("exp")
+        #     elif self._std_parameterization == "softplus":
+        #         std_var = Lambda(lambda x: tf.log(1. + tf.exp(x)))(
+        #             std_param_var)
+        #         print("softplus")
+        #     else:
+        #         raise NotImplementedError
 
-        sample_var = DistributionLayer(self._dist)([mean_var, std_var])
+        # sample_var = DistributionLayer(self._dist)([mean_var, std_param_var])
 
-        return Model(
-            inputs=input_var,
-            outputs=[mean_var, std_var, std_param_var, sample_var])
+        return Model(inputs=input_var, outputs=[mean_var, std_param_var])
+
+    # for testing
+    def get_max(self, x):
+        return tf.maximum(x, self._min_std_param)
+
+    def get_min(self, x):
+        return tf.minimum(x, self._max_std_param)
