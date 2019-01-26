@@ -1,17 +1,19 @@
 """Uniform Control Policy."""
 import numpy as np
 
+from garage.core import Serializable
 from garage.misc.overrides import overrides
 from garage.policies import Policy
 
 
-class UniformControlPolicy(Policy):
+class UniformControlPolicy(Policy, Serializable):
     """Uniform Control Policy."""
 
     def __init__(
             self,
             env_spec,
     ):
+        Serializable.quick_init(self, locals())
         super().__init__(env_spec=env_spec)
 
     @overrides
